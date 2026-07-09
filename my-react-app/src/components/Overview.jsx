@@ -1,11 +1,24 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import axios from "axios";
 import {
-  Building2, DollarSign, Sparkles, AlertTriangle, ArrowUpRight, ArrowDownRight
+  Building2,
+  IndianRupee,
+  Sparkles,
+  AlertTriangle,
+  ArrowUpRight,
+  ArrowDownRight,
 } from "lucide-react";
+
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar
+  AreaChart,
+  Area,
+ XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
 } from "recharts";
-import { tenants, revenueData, creditUsageData } from "../data/mockData";
 
 const StatCard = ({ icon: Icon, label, value, delta, deltaUp, sub, accent = "#7c5cfc" }) => (
   <div className="bg-white border border-gray-100 rounded-2xl p-5 flex flex-col gap-3 hover:shadow-sm transition-shadow">
@@ -29,10 +42,89 @@ const StatCard = ({ icon: Icon, label, value, delta, deltaUp, sub, accent = "#7c
 );
 
 const Overview = () => {
-  const activeCount = tenants.filter(t => t.status === "active").length;
-  const trialCount = tenants.filter(t => t.status === "trial").length;
-  const suspendedCount = tenants.filter(t => t.status === "suspended").length;
-  const totalMRR = tenants.reduce((s, t) => s + t.mrr, 0);
+
+  const [tenants, setTenants] = useState([]);
+  const [loading, setLoading] = useState(true);
+const activeCount = tenants.filter(
+  t => t.status === "active"
+).length;
+
+const suspendedCount = tenants.filter(
+  t => t.status === "suspended"
+).length;
+
+const trialCount = tenants.filter(
+  t => t.is_trial_active
+).length;
+
+const totalMRR = tenants.reduce(
+  (sum, t) => sum + Number(t.total_plan_amount || t.plan_price || 0),
+  0
+);
+
+const totalAiCredits = tenants.reduce(
+  (sum, t) => sum + Number(t.used_ai_credits || 0),
+  0
+);
+  
+
+  useEffect(() => {
+  fetchOverview();
+}, []);
+
+const fetchOverview = async () => {
+  try {
+    setLoading(true);
+
+    const res = await axios.get(
+      `http://localhost:5001/api/tenants/all-tenants`
+    );
+
+    if (res.data.success) {
+      setTenants(res.data.data);
+    }
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const revenueData = useMemo(() => {
+  const months = {};
+
+  tenants.forEach((tenant) => {
+    const month = new Date(tenant.created_at).toLocaleString("default", {
+      month: "short",
+    });
+
+    if (!months[month]) months[month] = 0;
+
+    months[month] += Number(
+      tenant.total_plan_amount || tenant.plan_price || 0
+    );
+  });
+
+  return Object.keys(months).map((m) => ({
+    month: m,
+    mrr: months[m],
+  }));
+}, [tenants]);
+
+const creditUsageData = useMemo(() => {
+  return tenants.slice(0, 7).map((tenant, index) => ({
+    day: `T${index + 1}`,
+    used: tenant.used_ai_credits || 0,
+  }));
+}, [tenants]);
+
+if (loading) {
+  return (
+    <div className="flex justify-center items-center h-96">
+      Loading...
+    </div>
+  );
+}
 
   return (
     <>
@@ -41,15 +133,15 @@ const Overview = () => {
           icon={Building2} 
           label="Total Tenants" 
           value={`${tenants.length}`} 
-          delta="+2 this month" 
+          // delta="+2 this month" 
           deltaUp 
           sub={`${activeCount} active · ${trialCount} trial`} 
         />
         <StatCard 
-          icon={DollarSign} 
+          icon={IndianRupee} 
           label="Monthly Revenue" 
-          value={`$${totalMRR.toLocaleString()}`} 
-          delta="+11.5%" 
+          value={`₹${totalMRR.toLocaleString()}`} 
+          // delta="+11.5%" 
           deltaUp 
           sub="MRR across all plans" 
           accent="#059669" 
@@ -57,8 +149,8 @@ const Overview = () => {
         <StatCard 
           icon={Sparkles} 
           label="AI Credits Used" 
-          value="163K" 
-          delta="+22%" 
+          value={totalAiCredits.toLocaleString()}
+          // delta="+22%" 
           deltaUp 
           sub="7-day rolling average" 
           accent="#0891b2" 
