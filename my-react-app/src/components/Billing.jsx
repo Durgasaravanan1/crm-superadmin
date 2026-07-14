@@ -98,19 +98,70 @@ const Billing = () => {
 
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [overview, setOverview] = useState({this_month_revenue: 0,total_crm_sales_value: 0,});
+  const [billingData, setBillingData] = useState([]);
    const totalMRR = tenants.reduce(
   (sum, tenant) => sum + Number(tenant.total_plan_amount || 0),0);
 
   useEffect(() => {
-  fetchTenants();
+  fetchBilling();
+  fetchOverview();
 }, []);
+
+const fetchBilling = async () => {
+  try {
+    setLoading(true);
+
+    const [tenantRes, invoiceRes] = await Promise.all([
+      axios.get("http://localhost:5001/api/tenants/all-tenants"),
+      axios.get("http://localhost:5001/api/invoices"),
+    ]);
+
+    const tenants = tenantRes.data.data;
+    const invoices = invoiceRes.data.data;
+
+   const merged = invoices.map((invoice) => {
+  const tenant = tenants.find(
+    (t) => t.tenant_id === invoice.tenant_id
+  );
+
+  return {
+    ...tenant,
+    ...invoice,
+    tenant_status: tenant?.status,
+    tenant_payment_status: tenant?.payment_status,
+    invoice_status: invoice.status,
+  };
+});
+console.log(merged);
+    setBillingData(merged);
+  } catch (err) {
+    console.error(err);
+  } finally {
+    setLoading(false);
+  }
+};
+
+const fetchOverview = async () => {
+  try {
+    const res = await axios.get(
+      "http://localhost:5001/api/subscriptionPayment/overview"
+    );
+
+    if (res.data.success) {
+      setOverview(res.data.data);
+    }
+  } catch (err) {
+    console.log(err);
+  }
+};
 
 const fetchTenants = async () => {
   try {
     setLoading(true);
 
     const res = await axios.get(
-      `http://localhost:5001/api/tenants/all-tenants`
+      `http://localhost:5001/api/invoices`
     );
 
     if (res.data.success) {
@@ -141,7 +192,7 @@ const fetchTenants = async () => {
       const rows = [
         ["Tenant", "Plan", "MRR", "Status", "Next Invoice"],
         ...tenants.filter(t => t.mrr > 0).map(t => [
-          t.org_name, t.plan_name, `$${t.mrr}`, t.payment_status === "suspended" ? "Failed" : "Current", "Jul 1, 2025"
+          t.org_name, t.plan_name, `$${t.mrr}`, t.invoice_status === "suspended" ? "Failed" : "Current", "Jul 1, 2025"
         ])
       ];
       const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
@@ -164,7 +215,7 @@ const fetchTenants = async () => {
           tenant.org_name, 
           tenant.plan_name, 
           `₹${Number(tenant.total_plan_amount).toLocaleString("en-IN")}`, 
-          tenant.payment_status === "suspended" ? "Failed" : "Current", 
+          tenant.invoice_status === "suspended" ? "Failed" : "Current", 
           "Jul 1, 2025",
           new Date().toISOString().split("T")[0]
         ]
@@ -183,7 +234,7 @@ const fetchTenants = async () => {
   };
 
   const failedPayments = tenants.filter(
-    t => t.payment_status !== "paid"
+    t => t.invoice_status !== "paid"
 ).length;
 
   const sendEmailInvoice = (tenant) => {
@@ -195,6 +246,37 @@ const fetchTenants = async () => {
       showPopup("success", "Email Sent!", `Invoice sent successfully to ${t.org_email}`);
     }, 1500);
   };
+
+const handleMarkAsPaid = async (tenant) => {
+  try {
+    const res = await axios.post(
+      "http://localhost:5001/api/subscriptionPayment/record",
+      {
+        tenant_id: tenant.tenant_id,
+        amount: Number(tenant.total_plan_amount),
+        payment_method: "manual"
+      }
+    );
+
+    if (res.data.success) {
+      showPopup(
+        "success",
+        "Payment Recorded",
+        `${tenant.org_name} invoice marked as paid.`
+      );
+
+      fetchTenants();
+    }
+  } catch (err) {
+    console.error(err);
+
+    showPopup(
+      "error",
+      "Payment Failed",
+      err.response?.data?.message || "Unable to mark invoice as paid."
+    );
+  }
+};
 
   if (loading) {
   return (
@@ -222,26 +304,30 @@ const fetchTenants = async () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <StatCard 
           icon={IndianRupee} 
-          label="Total MRR" 
-          value={`₹${totalMRR.toLocaleString()}`} 
-          delta="+11.5%" 
+          label="This Month Revenue" 
+          value={`₹${Number(
+  overview.this_month_revenue
+).toLocaleString("en-IN")}`}
+          // delta="+11.5%" 
           deltaUp 
-          sub="Monthly recurring revenue" 
+          sub="Paid amounts received this month" 
           accent="#059669" 
         />
         <StatCard 
           icon={TrendingUp} 
-          label="ARR Projection" 
-          value={`₹${(totalMRR * 12).toLocaleString()}`} 
-          sub="Based on current MRR" 
+          label="Total CRM Sales Value" 
+          value={`₹${Number(
+  overview.total_crm_sales_value
+).toLocaleString("en-IN")}`}
+          sub="Total value of all tenants (including trial)" 
         />
-        <StatCard 
+        {/* <StatCard 
           icon={CreditCard} 
           label="Failed Payments" 
           value={failedPayments}
           sub="Arco Retail Group" 
           accent="#dc2626" 
-        />
+        /> */}
       </div>
       
       <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden overflow-x-auto">
@@ -260,7 +346,7 @@ const fetchTenants = async () => {
             </tr>
           </thead>
           <tbody>
-            {tenants
+            {billingData
   .filter(t => !t.is_trial_active)
   .map(t => (
               <tr key={t.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
@@ -284,40 +370,57 @@ const fetchTenants = async () => {
                 <td className="px-5 py-3.5 text-xs font-mono text-gray-400">Jul 1, 2025</td>
                 <td className="px-5 py-3.5">
                   <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border ${
-                    t.payment_status === "pending" 
+                    t.invoice_status === "pending" 
                       ? "text-red-600 bg-red-50 border-red-200" 
                       : "text-emerald-600 bg-emerald-50 border-emerald-200"
                   }`}>
-                    {t.payment_status === "pending" ? <AlertCircle className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
-                    {t.payment_status === "pending" ? "Unpaid" : "Paid"}
+                    {t.invoice_status === "pending" ? <AlertCircle className="w-3 h-3" /> : <CheckCircle className="w-3 h-3" />}
+                    {t.invoice_status === "pending" ? "Unpaid" : "Paid"}
                   </span>
                 </td>
+               
                 <td className="px-5 py-3.5">
-                  <div className="flex items-center gap-1.5">
-                    {/* Download Individual Invoice Button */}
-                    <button 
-                      onClick={() => downloadIndividualInvoice(t)}
-                      className="p-2 rounded-lg hover:bg-violet-50 text-gray-400 hover:text-violet-600 transition-all group"
-                      title="Download Invoice"
-                    >
-                      <Download className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    </button>
-                    
-                    {/* Send Email Button */}
-                    <button 
-                      onClick={() => sendEmailInvoice(t)}
-                      className="p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600 transition-all group"
-                      title="Send Invoice via Email"
-                    >
-                      <Mail className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                    </button>
-                  </div>
-                </td>
+  <div className="flex items-center gap-2">
+
+    <button
+      onClick={() => downloadIndividualInvoice(t)}
+      className="p-2 rounded-lg hover:bg-violet-50 text-gray-400 hover:text-violet-600"
+      title="Download Invoice"
+    >
+      <Download className="w-4 h-4" />
+    </button>
+
+    <button
+      onClick={() => sendEmailInvoice(t)}
+      className="p-2 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-600"
+      title="Send Invoice"
+    >
+      <Mail className="w-4 h-4" />
+    </button>
+
+    {t.invoice_status === "pending" ? (
+      <button
+        onClick={() => handleMarkAsPaid(t)}
+        className="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-700 transition"
+      >
+        Mark as Paid
+      </button>
+    ) : (
+      <button
+        disabled
+        className="px-3 py-2 rounded-lg bg-emerald-100 text-emerald-700 text-xs font-medium cursor-not-allowed"
+      >
+        Paid
+      </button>
+    )}
+
+  </div>
+</td>
               </tr>
             ))}
           </tbody>
         </table>
-        {tenants.filter(t => Number(t.total_plan_amount) > 0).length === 0 && (
+        {billingData.filter(t => Number(t.total_plan_amount) > 0).length === 0 && (
           <div className="py-16 text-center">
             <CreditCard className="w-12 h-12 mx-auto text-gray-300 mb-3" />
             <div className="text-gray-400 text-sm font-medium">No active billing records</div>

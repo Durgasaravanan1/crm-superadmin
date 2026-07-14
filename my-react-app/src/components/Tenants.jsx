@@ -1,10 +1,12 @@
-import React, { useState,useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Plus, Download, PauseCircle, CheckCircle, Building2, X, Clock, AlertTriangle, Package, Info, Sparkles,
-  Minus, ChevronDown, ChevronUp, Phone, Users, Check, Zap, TrendingUp, Award
+  Minus, ChevronDown, ChevronUp, Phone, Users, Check, Zap, TrendingUp, Award, MoreVertical,
+  Edit, FileText, CreditCard
 } from "lucide-react";
 import axios from "axios";
 
+const backend_url = "http://localhost:5001";
 
 const Toast = ({ message, type, onClose }) => {
   const icons = {
@@ -38,7 +40,7 @@ const StatusBadge = ({ status }) => {
     suspended: { label: "Suspended", cls: "bg-red-50 text-red-600 border-red-200" },
     trial: { label: "Trial", cls: "bg-amber-50 text-amber-700 border-amber-200" },
   };
-  const s = map[status];
+  const s = map[status] || map.active;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border ${s.cls}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${status === "active" ? "bg-emerald-500" : status === "suspended" ? "bg-red-500" : "bg-amber-500"}`} />
@@ -60,6 +62,149 @@ const CreditBar = ({ used, total }) => {
   );
 };
 
+const SubscriptionStatusBadge = ({ status }) => {
+  const map = {
+    active: { label: "🟢 Active", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+    trialing: { label: "🟡 Trialing", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+    trial_expired: { label: "🔴 Trial Expired", cls: "bg-red-50 text-red-600 border-red-200" },
+    payment_failed: { label: "💳 Payment Failed", cls: "bg-orange-50 text-orange-600 border-orange-200" },
+  };
+  const s = map[status] || map.active;
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border ${s.cls}`}>
+      {s.label}
+    </span>
+  );
+};
+
+// ---------- Redesigned dropdown menu (rendered via fixed positioning) ----------
+const TenantDropdown = ({
+  tenant,
+  anchor,
+  onClose,
+  toggleStatus,
+  openExtendTrialModal,
+  generateInvoice,
+  setSelectedTenant,
+}) => {
+ const showTrialActions =
+  tenant?.status === "suspended" &&
+  (
+    tenant?.subscriptionStatus === "trialing" ||
+    tenant?.subscriptionStatus === "trial_expired"
+  );
+
+  const menuItems = [
+    {
+      group: "Manage",
+      items: [
+        {
+          icon: Edit,
+          label: "Edit tenant",
+          color: "text-gray-500",
+          bg: "bg-gray-100",
+          onClick: () => {
+  setSelectedTenant(tenant);
+  onClose();
+},
+        },
+        {
+          icon: PauseCircle,
+          label: tenant?.status === "active" ? "Suspend tenant" : "Activate tenant",
+          color: tenant?.status === "active" ? "text-red-500" : "text-emerald-600",
+          bg: tenant?.status === "active" ? "bg-red-50" : "bg-emerald-50",
+          onClick: () => { toggleStatus(tenant); onClose(); },
+        },
+      ],
+    },
+    ...(showTrialActions
+  ? [{
+      group: "Trial",
+      items: [
+        {
+          icon: Clock,
+          label: "Extend Trial",
+          color: "text-amber-600",
+          bg: "bg-amber-50",
+          onClick: () => openExtendTrialModal(tenant),
+        },
+      ],
+    }]
+  : []),
+    {
+      group: "Billing",
+      items: [
+        {
+          icon: FileText,
+          label: "Generate invoice",
+          color: "text-violet-600",
+          bg: "bg-violet-50",
+          onClick: () => generateInvoice(tenant?.tenant_id),
+        },
+        ...(tenant?.paymentStatus === "pending"
+          ? [{
+              icon: CreditCard,
+              label: "View invoice",
+              color: "text-blue-600",
+              bg: "bg-blue-50",
+              onClick: () => onClose(),
+            }]
+          : []),
+      ],
+    },
+  ];
+
+  return (
+    <div
+      className="fixed z-[1000] w-56 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 animate-slide-down"
+      style={{
+        top: anchor?.openUpward ? "auto" : anchor?.top,
+        bottom: anchor?.openUpward ? window.innerHeight - anchor?.top + 6 : "auto",
+        left: Math.max(8, anchor?.left),
+        maxHeight: 'calc(100vh - 20px)',
+        overflowY: 'auto'
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="px-4 pb-2 mb-1 border-b border-gray-50">
+        <div className="text-xs font-semibold text-gray-900 truncate">{tenant?.name || ''}</div>
+        <div className="text-[10px] font-mono text-gray-400 truncate">{tenant?.tenant_id || ''}</div>
+      </div>
+
+      {menuItems.map((section, i) => (
+        <div key={section.group} className={i > 0 ? "mt-1 pt-1 border-t border-gray-50" : ""}>
+          <div className="px-4 py-1 text-[10px] font-mono uppercase tracking-wider text-gray-300">
+            {section.group}
+          </div>
+          {section.items.map((item) => (
+            <button
+              key={item.label}
+              onClick={item.onClick}
+              className="w-full px-3 py-2 text-left flex items-center gap-3 hover:bg-gray-50 transition-colors group"
+            >
+              <span className={`w-7 h-7 rounded-lg flex items-center justify-center ${item.bg}`}>
+                <item.icon className={`w-3.5 h-3.5 ${item.color}`} />
+              </span>
+              <span className="text-sm text-gray-700 group-hover:text-gray-900">{item.label}</span>
+            </button>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const formatDate = (date) => {
+  if (!date) return "-";
+
+  return new Date(date).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
 const Tenants = () => {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -71,84 +216,152 @@ const Tenants = () => {
   const [creditInput, setCreditInput] = useState("");
   const [addTenantOpen, setAddTenantOpen] = useState(false);
   const [tenantForm, setTenantForm] = useState({
-  company_name: "",
-  full_name: "",
-  email: "",
-  mobile_number: "",
-  timezone: "Asia/Kolkata",
-  currency: "INR",
-  billing_cycle: "monthly",
-  plan_slug: "starter",
-  max_call_users: 0,
-});
+    company_name: "",
+    full_name: "",
+    email: "",
+    mobile_number: "",
+    timezone: "Asia/Kolkata",
+    currency: "INR",
+    billing_cycle: "monthly",
+    plan_slug: "starter",
+    max_call_users: 0,
+  });
   const [tenantFormError, setTenantFormError] = useState("");
   const [pendingPlan, setPendingPlan] = useState(null);
   const [toast, setToast] = useState(null);
-  const [expandedPlan, setExpandedPlan] = useState("Start"); // Start with Start expanded
+  const [expandedPlan, setExpandedPlan] = useState("Start");
+  const [showTrialModal, setShowTrialModal] = useState(false);
+  const [days, setDays] = useState(3);
 
-  
+  // Dropdown state: which tenant's menu is open + where to position it
+  const [dropdownOpen, setDropdownOpen] = useState(null);
+  const [dropdownAnchor, setDropdownAnchor] = useState(null); // { top, left, openUpward }
+
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
+  const [trialTenant, setTrialTenant] = useState(null);
+
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+const [previewData, setPreviewData] = useState(null);
+
+ const openExtendTrialModal = (tenant) => {
+  setSelectedTenant(null);   // Close sidebar first
+
+  setTrialTenant(tenant);
+  setDays(3);
+
+  setShowTrialModal(true);
+
+  setDropdownOpen(null);
+  setDropdownAnchor(null);
+};
+
+  const extendTrial = async () => {
+    try {
+      await axios.put(
+        `${backend_url}/api/tenants/extend-trial/${trialTenant?.tenant_id}`,
+        { days }
+      );
+      showToast("Trial Extended Successfully", "success");
+      fetchTenants();
+      setShowTrialModal(false);
+      setTrialTenant(null);
+    } catch (err) {
+      showToast(err.response?.data?.message || "Failed to extend trial", "error");
+    }
+  };
+
+  const previewInvoice = async (tenantId) => {
+  try {
+    const res = await axios.get(
+      `${backend_url}/api/invoices/preview/${tenantId}`
+    );
+
+    console.log("Preview API Response:", res.data.data);
+
+    setPreviewData(res.data.data);
+
+    setShowPreviewModal(true);
+
+    setDropdownOpen(null);
+
+    setDropdownAnchor(null);
+  } catch (err) {
+    showToast(
+      err.response?.data?.message || "Failed to preview invoice",
+      "error"
+    );
+  }
+};
+
+  const generateInvoice = async (tenantId) => {
+    try {
+      const response = await axios.post(
+        `${backend_url}/api/invoices/generate/${tenantId}`
+      );
+      setInvoiceData(response.data.data);
+      setShowInvoiceModal(true);
+      setDropdownOpen(null);
+      setDropdownAnchor(null);
+      showToast("Invoice generated successfully", "success");
+    } catch (err) {
+      showToast(err.response?.data?.message || "Failed to generate invoice", "error");
+    }
+  };
 
   const showToast = (message, type = "success") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
   };
 
-  //Fetch Tenant Details function
-const fetchTenants = async () => {
-  try {
-    setLoading(true);
+  const fetchTenants = async () => {
+    try {
+      setLoading(true);
+      const res = await axios.get(`${backend_url}/api/tenants/all-tenants`);
+      setTenants(
+        (res.data?.data || []).map((t) => ({
+          id: t.tenant_id,
+          name: t.org_name,
+          domain: t.org_email,
+          plan: t.plan_name,
+          status: t.status,
+          subscriptionStatus: t.subscription_status,
+          isTrialActive: t.is_trial_active,
+          users: t.current_user_count,
+          aiCredits: t.ai_credits,
+          usedCredits: t.used_ai_credits,
+          startDate: t.created_at,
+          trialEnd: t.trial_end_date,
+          billing: t.billing_cycle,
+          email: t.org_email,
+          owner: t.org_name,
+          paymentStatus: t.payment_status,
+          tenant_id: t.tenant_id,
+        }))
+      );
+    } catch (err) {
+      console.error("Error fetching tenants:", err);
+      showToast("Failed to load tenants", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    const res = await axios.get(
-      "http://localhost:5001/api/tenants/all-tenants"
-    );
+  useEffect(() => {
+    fetchTenants();
+  }, []);
 
-    setTenants(
-      (res.data?.data || []).map((t) => ({
-        id: t.tenant_id,
-        name: t.org_name,
-        domain: t.org_email,
-        plan: t.plan_name,
-        status: t.status,
-        users: t.current_user_count,
-        aiCredits: t.ai_credits,
-        usedCredits: t.used_ai_credits,
-        startDate: t.created_at,
-        trialEnd: t.trial_end_date,
-        billing: t.billing_cycle,
-        email: t.org_email,
-        owner: t.org_name,
-      }))
-    );
-  } catch (err) {
-    console.error("Error fetching tenants:", err);
-    showToast("Failed to load tenants", "error");
-  } finally {
-    setLoading(false);
-  }
-};
-
-useEffect(() => {
-  fetchTenants();
-}, []);
-
-
-//Function for delete tenant
-const deleteTenant = async (tenantId) => {
-  try {
-    await axios.delete(
-      `http://localhost:5001/api/tenants/delete/${tenantId}`
-    );
-
-    showToast("Tenant deleted successfully");
-
-    setSelectedTenant(null);
-
-    fetchTenants(); // Refresh table
-  } catch (err) {
-    console.error(err);
-    showToast("Failed to delete tenant", "error");
-  }
-};
+  const deleteTenant = async (tenantId) => {
+    try {
+      await axios.delete(`${backend_url}/api/tenants/delete/${tenantId}`);
+      showToast("Tenant deleted successfully", "success");
+      setSelectedTenant(null);
+      fetchTenants();
+    } catch (err) {
+      console.error(err);
+      showToast("Failed to delete tenant", "error");
+    }
+  };
 
   const filtered = tenants.filter(t => {
     const q = search.toLowerCase();
@@ -157,102 +370,73 @@ const deleteTenant = async (tenantId) => {
       && (filterPlan === "all" || t.plan === filterPlan);
   });
 
-const toggleStatus = async (tenant) => {
-
+  const toggleStatus = async (tenant) => {
     try {
-
-        const newStatus =
-            tenant.status === "active"
-                ? "suspended"
-                : "active";
-
-        await axios.patch(
-            `http://localhost:5001/api/tenants/status/${tenant.id}`,
-            {
-                status: newStatus,
-            }
-        );
-
-        showToast(
-            newStatus === "active"
-                ? "Tenant activated successfully"
-                : "Tenant suspended successfully"
-        );
-
-        fetchTenants();
-
-        if (selectedTenant?.id === tenant.id) {
-            setSelectedTenant({
-                ...selectedTenant,
-                status: newStatus,
-            });
-        }
-
+      const newStatus = tenant.status === "active" ? "suspended" : "active";
+      await axios.patch(`${backend_url}/api/tenants/status/${tenant.id}`, {
+        status: newStatus,
+      });
+      showToast(
+        newStatus === "active" ? "Tenant activated successfully" : "Tenant suspended successfully"
+      );
+      fetchTenants();
+      if (selectedTenant?.id === tenant.id) {
+        setSelectedTenant({
+          ...selectedTenant,
+          status: newStatus,
+        });
+      }
     } catch (err) {
-
-        console.error(err);
-
-        showToast("Failed to update tenant status", "error");
-
+      console.error(err);
+      showToast("Failed to update tenant status", "error");
     }
+  };
 
-};
   const addCredits = (id, amount) => {
     setTenants(prev => prev.map(t => t.id === id ? { ...t, aiCredits: t.aiCredits + amount } : t));
     setSelectedTenant(prev => prev && prev.id === id ? { ...prev, aiCredits: prev.aiCredits + amount } : prev);
     showToast(`${amount.toLocaleString()} credits added successfully!`, "success");
   };
 
-const handlePlanSelect = (plan) => {
-
-  const slugMap = {
-    Start: "starter",
-    Grow: "growth",
-    Scale: "scale",
+  const handlePlanSelect = (plan) => {
+    const slugMap = {
+      Start: "starter",
+      Grow: "growth",
+      Scale: "scale",
+    };
+    setExpandedPlan(plan);
+    setTenantForm(prev => ({
+      ...prev,
+      plan_slug: slugMap[plan],
+      max_call_users: 0,
+    }));
   };
 
-  setExpandedPlan(plan);
-
-  setTenantForm(prev => ({
-    ...prev,
-    plan_slug: slugMap[plan],
-    max_call_users: 0,
-  }));
-
-};
-
   const submitAddTenant = async () => {
-  try {
-    await axios.post(
-      "http://localhost:5001/api/subscription/create",
-      tenantForm
-    );
-
-    showToast("Tenant created successfully");
-
-    setAddTenantOpen(false);
-
-    fetchTenants();
-
-    setTenantForm({
-      company_name: "",
-      full_name: "",
-      email: "",
-      mobile_number: "",
-      timezone: "Asia/Kolkata",
-      currency: "INR",
-      billing_cycle: "monthly",
-      plan_slug: "starter",
-      max_call_users: 0,
-    });
-  } catch (err) {
-    console.error(err);
-    showToast(
-      err.response?.data?.message || "Failed to create tenant",
-      "error"
-    );
-  }
-};
+    try {
+      await axios.post(`${backend_url}/api/subscription/create`, tenantForm);
+      showToast("Tenant created successfully", "success");
+      setAddTenantOpen(false);
+      fetchTenants();
+      setTenantForm({
+        company_name: "",
+        full_name: "",
+        email: "",
+        mobile_number: "",
+        timezone: "Asia/Kolkata",
+        currency: "INR",
+        billing_cycle: "monthly",
+        plan_slug: "starter",
+        max_call_users: 0,
+      });
+    } catch (err) {
+      console.error(err);
+      showToast(
+        err.response?.data?.message || "Failed to create tenant",
+        "error"
+      );
+    }
+  };
 
   const submitPlanChange = () => {
     if (!selectedTenant || !pendingPlan || pendingPlan === selectedTenant.plan) return;
@@ -263,7 +447,7 @@ const handlePlanSelect = (plan) => {
   };
 
   const activeCount = tenants.filter(t => t.status === "active").length;
-  const trialCount = tenants.filter(t => t.status === "trial").length;
+  const trialCount = tenants.filter(t => t.isTrialActive).length;
   const suspendedCount = tenants.filter(t => t.status === "suspended").length;
 
   const planDetails = {
@@ -276,7 +460,7 @@ const handlePlanSelect = (plan) => {
       description: "Perfect for small teams getting started",
       price: "₹4,999/mo",
       icon: Zap,
-      features: [ "10 Users", "Basic Support"]
+      features: ["10 Users", "Basic Support"]
     },
     Grow: { 
       users: 20, 
@@ -287,7 +471,7 @@ const handlePlanSelect = (plan) => {
       description: "Ideal for growing businesses",
       price: "₹8,999/mo",
       icon: TrendingUp,
-      features: [ "20 Users", "Priority Support", "Advanced Analytics"]
+      features: ["20 Users", "Priority Support", "Advanced Analytics"]
     },
     Scale: { 
       users: 40, 
@@ -302,13 +486,61 @@ const handlePlanSelect = (plan) => {
     }
   };
 
-  if (loading) {
-  return (
-    <div className="flex justify-center items-center h-[60vh]">
-      <p className="text-gray-500 text-sm">Loading tenants...</p>
-    </div>
-  );
+  // Handles opening the dropdown for a given row — computes position from the
+  // clicked button's bounding rect so it renders correctly regardless of table scroll/clip.
+  const handleDropdownToggle = (e, tenant) => {
+    e.stopPropagation();
+    if (dropdownOpen === tenant.id) {
+      setDropdownOpen(null);
+      setDropdownAnchor(null);
+      return;
+    }
+    const rect = e.currentTarget.getBoundingClientRect();
+   const estimatedHeight =
+  tenant.status === "suspended" &&
+  (
+    tenant.subscriptionStatus === "trialing" ||
+    tenant.subscriptionStatus === "trial_expired"
+  )
+    ? 430
+    : 330;
+
+const spaceBelow = window.innerHeight - rect.bottom;
+const spaceAbove = rect.top;
+
+let openUpward = false;
+let top = rect.bottom + 8;
+
+if (spaceBelow < estimatedHeight && spaceAbove > estimatedHeight) {
+  openUpward = true;
+  top = rect.top - estimatedHeight - 8;
 }
+    
+    const left = Math.min(
+      Math.max(rect.right - 224, 10),
+      window.innerWidth - 234
+    );
+    
+    setDropdownAnchor({
+      top: top,
+      left: left,
+      openUpward: openUpward,
+    });
+    setDropdownOpen(tenant.id);
+  };
+
+  const closeDropdown = () => {
+    setDropdownOpen(null);
+    setDropdownAnchor(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-[60vh]">
+        <p className="text-gray-500 text-sm">Loading tenants...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -363,77 +595,317 @@ const handlePlanSelect = (plan) => {
       </div>
 
       {/* Table */}
-      
-      <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden overflow-x-auto">
-        <table className="w-full min-w-[750px]">
-          <thead>
-            <tr className="border-b border-gray-100 bg-gray-50/50">
-              {["Tenant", "Plan", "Status", "AI Credits", "Users", "Start Date", "Billing", ""].map(h => (
-                <th key={h} className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest text-gray-400 font-medium">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((t, i) => (
-              <tr key={t.id}
-                className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors hover:bg-violet-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
-                onClick={() => { setSelectedTenant(t); setPendingPlan(null); }}>
-                <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center text-xs font-bold text-violet-700 flex-shrink-0">
-                      {t.name.slice(0, 2).toUpperCase()}
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium text-gray-900">{t.name}</div>
-                      <div className="text-xs font-mono text-gray-400">{t.domain}</div>
-                    </div>
-                  </div>
-                </td>
-                <td className="px-4 py-3.5">
-                  <span className={`text-xs font-mono px-2 py-0.5 rounded-lg border ${t.plan === "Scale" ? "text-violet-700 bg-violet-50 border-violet-200" : t.plan === "Grow" ? "text-cyan-700 bg-cyan-50 border-cyan-200" : "text-gray-600 bg-gray-50 border-gray-200"}`}>
-                    {t.plan}
-                  </span>
-                </td>
-                <td className="px-4 py-3.5">
-                  <div className="flex flex-col gap-1">
-                    <StatusBadge status={t.status} />
-                    {t.status === "trial" && t.trialEnd && (
-                      <span className="text-[10px] font-mono text-amber-600">Ends {t.trialEnd}</span>
-                    )}
-                  </div>
-                </td>
-                <td className="px-4 py-3.5 w-36">
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-xs font-mono">
-                      <span className="text-gray-700">{t.usedCredits.toLocaleString()}</span>
-                      <span className="text-gray-400">/ {t.aiCredits.toLocaleString()}</span>
-                    </div>
-                    <CreditBar used={t.usedCredits} total={t.aiCredits} />
-                  </div>
-                </td>
-                <td className="px-4 py-3.5 text-sm font-mono text-gray-700">{t.users}</td>
-                <td className="px-4 py-3.5 text-xs font-mono text-gray-400">{t.startDate}</td>
-                <td className="px-4 py-3.5 text-xs font-mono text-gray-700">{t.billing}</td>
-                <td className="px-4 py-3.5" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => toggleStatus(t)}
-                    className={`p-2 rounded-lg transition-colors ${
-                      t.status === "active" 
-                        ? "hover:bg-red-50 text-gray-400 hover:text-red-500" 
-                        : "hover:bg-emerald-50 text-gray-400 hover:text-emerald-600"
-                    }`}>
-                    {t.status === "active" ? <PauseCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
-                  </button>
-                </td>
+      <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden overflow-x-auto relative">
+        <div className="overflow-x-auto overflow-y-visible">
+          <table className="w-full min-w-[850px]">
+            <thead>
+              <tr className="border-b border-gray-100 bg-gray-50/50">
+                {["Tenant", "Plan", "Status", "Subscription Status", "Users", "Start Date", "Billing", ""].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest text-gray-400 font-medium">{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filtered.map((t, i) => (
+                <tr key={t.id}
+                  className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors hover:bg-violet-50/30 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/30"}`}
+                  onClick={() => { setSelectedTenant(t); setPendingPlan(null); }}>
+                  <td className="px-4 py-3.5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center text-xs font-bold text-violet-700 flex-shrink-0">
+                        {t.name.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{t.name}</div>
+                        <div className="text-xs font-mono text-gray-400">{t.domain}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <span className={`text-xs font-mono px-2 py-0.5 rounded-lg border ${t.plan === "Scale" ? "text-violet-700 bg-violet-50 border-violet-200" : t.plan === "Grow" ? "text-cyan-700 bg-cyan-50 border-cyan-200" : "text-gray-600 bg-gray-50 border-gray-200"}`}>
+                      {t.plan}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <div className="flex flex-col gap-1">
+                      <StatusBadge status={t.status} />
+                      {t.status === "trial" && t.trialEnd && (
+                        <span className="text-[10px] font-mono text-amber-600">Ends {t.trialEnd}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3.5">
+                    <SubscriptionStatusBadge status={t.subscriptionStatus} />
+                  </td>
+                  <td className="px-4 py-3.5 text-sm font-mono text-gray-700">{t.users}</td>
+                  <td className="px-4 py-3.5 text-xs font-mono text-gray-400">{formatDate(t.startDate)}</td>
+                  <td className="px-4 py-3.5 text-xs font-mono text-gray-700">{t.billing}</td>
+                  <td className="px-4 py-3.5 relative" onClick={e => e.stopPropagation()}>
+                    <button
+                      onClick={(e) => handleDropdownToggle(e, t)}
+                      className={`p-2 rounded-lg transition-colors relative z-10 ${dropdownOpen === t.id ? "bg-gray-100" : "hover:bg-gray-100"}`}
+                    >
+                      <MoreVertical className="w-4 h-4 text-gray-400" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {filtered.length === 0 && (
           <div className="py-16 text-center text-gray-400 text-sm font-mono">No tenants match your filters</div>
         )}
       </div>
 
-      {/* Add Tenant Modal with Auto-Expand on Select */}
+      {/* Dropdown menu - Rendered at root level with fixed positioning */}
+      {dropdownOpen && dropdownAnchor && (
+        <>
+          {/* Backdrop to close dropdown when clicking outside */}
+          <div 
+            className="fixed inset-0 z-[999]" 
+            onClick={closeDropdown}
+          />
+          <TenantDropdown
+            tenant={filtered.find(t => t.id === dropdownOpen)}
+  anchor={dropdownAnchor}
+  onClose={closeDropdown}
+  toggleStatus={toggleStatus}
+  openExtendTrialModal={openExtendTrialModal}
+  generateInvoice={previewInvoice}
+  setSelectedTenant={setSelectedTenant}
+          />
+        </>
+      )}
+
+      {/* Extend Trial Modal */}
+      {showTrialModal && trialTenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowTrialModal(false)}>
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-[90%] max-w-[440px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Extend Trial</h3>
+                <p className="text-sm text-gray-500 mt-1">{trialTenant.name}</p>
+              </div>
+              <button onClick={() => setShowTrialModal(false)} className="w-8 h-8 rounded-xl hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">Days to extend</label>
+                <input
+                  type="number"
+                  value={days}
+                  onChange={(e) => setDays(parseInt(e.target.value) || 0)}
+                  min="1"
+                  max="30"
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 text-lg font-mono focus:outline-none focus:border-violet-400"
+                />
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+                <Clock className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                <div className="text-xs text-amber-700">
+                  Current trial ends: {trialTenant.trialEnd || "N/A"}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 mt-6 pt-4 border-t border-gray-100">
+              <button onClick={() => setShowTrialModal(false)} className="px-4 py-2 rounded-xl text-sm border border-gray-200 text-gray-500 hover:text-gray-800">Cancel</button>
+              <button onClick={extendTrial} className="px-4 py-2 rounded-xl text-sm font-semibold bg-amber-600 text-white hover:bg-amber-700 transition-colors">
+                Extend Trial
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {
+showPreviewModal && previewData && (
+
+<div className="fixed inset-0 z-50 flex items-center justify-center">
+
+<div className="absolute inset-0 bg-black/30 backdrop-blur-sm"/>
+
+<div className="relative bg-white rounded-2xl w-[650px] p-6">
+
+<h2 className="text-xl font-bold mb-5">
+Invoice Preview
+</h2>
+
+<div className="grid grid-cols-2 gap-4 text-sm">
+
+<div>
+<b>Tenant</b>
+
+<p>{previewData.tenant_name}</p>
+</div>
+
+<div>
+<b>Email</b>
+
+<p>{previewData.tenant_email}</p>
+</div>
+
+<div>
+<b>Plan</b>
+
+<p>{previewData.plan_name}</p>
+</div>
+
+<div>
+<b>Billing</b>
+
+<p>{previewData.billing_cycle}</p>
+</div>
+
+<div>
+<b>Invoice Date</b>
+
+<p>{formatDate(previewData.invoice_date)}</p>
+</div>
+
+<div>
+<b>Due Date</b>
+
+<p>{formatDate(previewData.due_date)}</p>
+</div>
+
+</div>
+
+<hr className="my-5"/>
+
+<div className="space-y-2">
+
+<div className="flex justify-between">
+<span>Plan Amount</span>
+<span>₹{previewData.plan_amount}</span>
+</div>
+
+<div className="flex justify-between">
+<span>Additional Users</span>
+<span>
+₹{previewData.additional_users_amount}
+</span>
+</div>
+
+<div className="flex justify-between">
+<span>Call Users</span>
+<span>
+₹{previewData.additional_call_users_amount}
+</span>
+</div>
+
+<div className="flex justify-between">
+<span>Tax</span>
+<span>₹{previewData.tax}</span>
+</div>
+
+<div className="flex justify-between">
+<span>Discount</span>
+<span>₹{previewData.discount}</span>
+</div>
+
+<hr/>
+
+<div className="flex justify-between text-lg font-bold">
+<span>Total</span>
+<span>
+₹{previewData.total}
+</span>
+</div>
+
+</div>
+
+<div className="flex justify-end gap-3 mt-6">
+
+<button
+onClick={()=>{
+setShowPreviewModal(false);
+}}
+className="px-5 py-2 border rounded-xl"
+>
+Cancel
+</button>
+
+<button
+onClick={()=>{
+generateInvoice(trialTenant?.tenant_id || previewData.tenant_id);
+}}
+className="px-5 py-2 bg-violet-600 text-white rounded-xl"
+>
+Generate Invoice
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+)}
+
+      {/* Invoice Modal */}
+      {showInvoiceModal && invoiceData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowInvoiceModal(false)}>
+          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl shadow-2xl border border-gray-200 w-[90%] max-w-[500px] p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-gray-900">Invoice Generated</h3>
+              <button onClick={() => setShowInvoiceModal(false)} className="w-8 h-8 rounded-xl hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-700">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Invoice #</span>
+                  <span className="font-mono font-medium">{invoiceData.invoice_number || "N/A"}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Amount</span>
+                  <span className="font-mono font-bold text-lg text-violet-600">
+    ₹{invoiceData.total_amount ?? 0}
+  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Status</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                    invoiceData.status === "paid" 
+                      ? "bg-emerald-100 text-emerald-700" 
+                      : "bg-amber-100 text-amber-700"
+                  }`}>
+                    {invoiceData.status || "Pending"}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Date</span>
+                  <span className="font-mono">
+    {formatDate(invoiceData.invoice_date)}
+  </span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => window.print()}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+                >
+                  Download PDF
+                </button>
+                <button 
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="flex-1 py-2.5 rounded-xl text-sm border border-gray-200 text-gray-600 hover:text-gray-800 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Tenant Modal */}
       {addTenantOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => { setAddTenantOpen(false); setTenantFormError(""); setExpandedPlan("Start"); }}>
           <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
@@ -452,24 +924,17 @@ const handlePlanSelect = (plan) => {
 
             <div className="px-6 py-5 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-               <div className="sm:col-span-2">
-  <label className="text-xs font-medium text-gray-500 block mb-1.5">
-    Company Name <span className="text-red-400">*</span>
-  </label>
-
-  <input
-    value={tenantForm.company_name}
-    onChange={(e) =>
-      setTenantForm({
-        ...tenantForm,
-        company_name: e.target.value,
-      })
-    }
-    placeholder="Acme Corporation"
-    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm"
-  />
-</div>
-                
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-gray-500 block mb-1.5">
+                    Company Name <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    value={tenantForm.company_name}
+                    onChange={(e) => setTenantForm({ ...tenantForm, company_name: e.target.value })}
+                    placeholder="Acme Corporation"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -490,105 +955,70 @@ const handlePlanSelect = (plan) => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-medium text-gray-500 block mb-1.5">Mobile Number</label>
-                 
-
-<input
-type="tel"
-placeholder="+91 9876543210"
-value={tenantForm.mobile_number}
-className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-violet-400 transition-colors"
-onChange={(e)=>
-setTenantForm({
-...tenantForm,
-mobile_number:e.target.value
-
-})}
-/>
-</div>
-<div>
-<label className="text-xs font-medium text-gray-500 block mb-1.5">
-Billing Cycle
-</label>
-
-<select
-value={tenantForm.billing_cycle}
-onChange={(e)=>
-setTenantForm({
-...tenantForm,
-billing_cycle:e.target.value
-})
-}
-className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5"
->
-<option value="monthly">Monthly</option>
-<option value="annual">Annual</option>
-</select>
-</div>
-<div>
-<label className="text-xs font-medium text-gray-500 block mb-1.5">
-Timezone
-</label>
-
-<select
-value={tenantForm.timezone}
-onChange={(e)=>
-setTenantForm({
-...tenantForm,
-timezone:e.target.value
-})
-}
-className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5"
->
-<option value="Asia/Kolkata">Asia/Kolkata</option>
-<option value="Asia/Dubai">Asia/Dubai</option>
-<option value="Europe/London">Europe/London</option>
-<option value="America/New_York">America/New_York</option>
-</select>
-</div>
-<div>
-<label className="text-xs font-medium text-gray-500 block mb-1.5">
-Currency
-</label>
-
-<select
-value={tenantForm.currency}
-onChange={(e)=>
-setTenantForm({
-...tenantForm,
-currency:e.target.value
-})
-}
-className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5"
->
-<option value="INR">INR</option>
-<option value="USD">USD</option>
-<option value="AED">AED</option>
-<option value="EUR">EUR</option>
-</select>
-</div>
-
+                  <input
+                    type="tel"
+                    placeholder="+91 9876543210"
+                    value={tenantForm.mobile_number}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-violet-400 transition-colors"
+                    onChange={(e) => setTenantForm({ ...tenantForm, mobile_number: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 block mb-1.5">Billing Cycle</label>
+                  <select
+                    value={tenantForm.billing_cycle}
+                    onChange={(e) => setTenantForm({ ...tenantForm, billing_cycle: e.target.value })}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5"
+                  >
+                    <option value="monthly">Monthly</option>
+                    <option value="annual">Annual</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 block mb-1.5">Timezone</label>
+                  <select
+                    value={tenantForm.timezone}
+                    onChange={(e) => setTenantForm({ ...tenantForm, timezone: e.target.value })}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5"
+                  >
+                    <option value="Asia/Kolkata">Asia/Kolkata</option>
+                    <option value="Asia/Dubai">Asia/Dubai</option>
+                    <option value="Europe/London">Europe/London</option>
+                    <option value="America/New_York">America/New_York</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 block mb-1.5">Currency</label>
+                  <select
+                    value={tenantForm.currency}
+                    onChange={(e) => setTenantForm({ ...tenantForm, currency: e.target.value })}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 py-2.5"
+                  >
+                    <option value="INR">INR</option>
+                    <option value="USD">USD</option>
+                    <option value="AED">AED</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </div>
               </div>
 
-              {/* Plan Selection with Auto-Expand */}
+              {/* Plan Selection */}
               <div>
                 <label className="text-xs font-medium text-gray-500 block mb-3">Select Plan</label>
                 <div className="space-y-3">
                   {["Start", "Grow", "Scale"].map(plan => {
                     const details = planDetails[plan];
                     const slugMap = {
-  Start: "starter",
-  Grow: "growth",
-  Scale: "scale",
-};
-
-const isSelected = tenantForm.plan_slug === slugMap[plan];
+                      Start: "starter",
+                      Grow: "growth",
+                      Scale: "scale",
+                    };
+                    const isSelected = tenantForm.plan_slug === slugMap[plan];
                     const isExpanded = expandedPlan === plan;
-                    
                     const Icon = details.icon;
                     
                     return (
                       <div key={plan} className="rounded-xl overflow-hidden">
-                        {/* Plan Card */}
                         <div 
                           className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${
                             isSelected 
@@ -621,11 +1051,9 @@ const isSelected = tenantForm.plan_slug === slugMap[plan];
                           </div>
                         </div>
 
-                        {/* Dropdown Content - Auto appears when selected */}
                         {isExpanded && isSelected && (
                           <div className="mt-2 p-4 bg-gray-50 rounded-xl border border-gray-200 shadow-inner animate-slide-down">
                             <div className="space-y-3">
-                              {/* Features */}
                               <div>
                                 <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">What's Included</div>
                                 <div className="space-y-1.5">
@@ -637,53 +1065,34 @@ const isSelected = tenantForm.plan_slug === slugMap[plan];
                                   ))}
                                 </div>
                               </div>
-
-                              {/* Divider */}
                               <div className="border-t border-gray-200" />
-
-                              {/* Call Limit Control */}
-                             <div>
-<label className="text-xs font-medium text-gray-500 block mb-2">
-Additional Call Users
-</label>
-
-<div className="flex items-center gap-3">
-
-<button
-onClick={()=>{
-if(tenantForm.max_call_users>0){
-setTenantForm(prev=>({
-...prev,
-max_call_users:prev.max_call_users-1
-}));
-}
-}}
->
--
-</button>
-<span>{tenantForm.max_call_users}</span>
-
-<button
-onClick={()=>{
-const limits={
-Start:6,
-Grow:16,
-Scale:36
-};
-
-if(tenantForm.max_call_users<limits[plan]){
-setTenantForm(prev=>({
-...prev,
-max_call_users:prev.max_call_users+1
-}));
-}
-}}
->
-+
-</button>
-
-</div>
-</div>
+                              <div>
+                                <label className="text-xs font-medium text-gray-500 block mb-2">Additional Call Users</label>
+                                <div className="flex items-center gap-3">
+                                  <button
+                                    onClick={() => {
+                                      if (tenantForm.max_call_users > 0) {
+                                        setTenantForm(prev => ({ ...prev, max_call_users: prev.max_call_users - 1 }));
+                                      }
+                                    }}
+                                    className="w-8 h-8 rounded-lg border border-gray-300 flex items-center justify-center hover:bg-gray-100"
+                                  >
+                                    <Minus className="w-4 h-4" />
+                                  </button>
+                                  <span className="text-lg font-mono min-w-[40px] text-center">{tenantForm.max_call_users}</span>
+                                  <button
+                                    onClick={() => {
+                                      const limits = { Start: 6, Grow: 16, Scale: 36 };
+                                      if (tenantForm.max_call_users < limits[plan]) {
+                                        setTenantForm(prev => ({ ...prev, max_call_users: prev.max_call_users + 1 }));
+                                      }
+                                    }}
+                                    className="w-8 h-8 rounded-lg border border-gray-300 flex items-center justify-center hover:bg-gray-100"
+                                  >
+                                    <Plus className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -755,10 +1164,8 @@ max_call_users:prev.max_call_users+1
                   { label: "Email", value: selectedTenant.email },
                   { label: "Plan", value: selectedTenant.plan },
                   { label: "Billing", value: selectedTenant.billing },
-                  { label: "Start Date", value: selectedTenant.startDate },
-                  { label: "Country", value: selectedTenant.country },
+                  { label: "Start Date", value: formatDate(selectedTenant.startDate) },
                   { label: "Users", value: `${selectedTenant.users}` },
-                  { label: "Last Active", value: selectedTenant.lastActive },
                 ].map(f => (
                   <div key={f.label} className="bg-gray-50 rounded-xl px-4 py-3">
                     <div className="text-[10px] font-mono uppercase tracking-wider text-gray-400 mb-1">{f.label}</div>
@@ -789,11 +1196,11 @@ max_call_users:prev.max_call_users+1
                   </button>
                 </div>
                 <div className="flex justify-between text-sm font-mono">
-                  <span className="text-gray-700">{selectedTenant.usedCredits.toLocaleString()} used</span>
-                  <span className="text-gray-400">of {selectedTenant.aiCredits.toLocaleString()}</span>
+                  <span className="text-gray-700">{selectedTenant.usedCredits?.toLocaleString() || 0} used</span>
+                  <span className="text-gray-400">of {selectedTenant.aiCredits?.toLocaleString() || 0}</span>
                 </div>
-                <CreditBar used={selectedTenant.usedCredits} total={selectedTenant.aiCredits} />
-                <div className="text-xs font-mono text-gray-400">{(selectedTenant.aiCredits - selectedTenant.usedCredits).toLocaleString()} credits remaining</div>
+                <CreditBar used={selectedTenant.usedCredits || 0} total={selectedTenant.aiCredits || 0} />
+                <div className="text-xs font-mono text-gray-400">{(selectedTenant.aiCredits - selectedTenant.usedCredits)?.toLocaleString() || 0} credits remaining</div>
 
                 {addCreditsOpen && (
                   <div className="pt-3 border-t border-gray-200 space-y-3">
@@ -848,11 +1255,13 @@ max_call_users:prev.max_call_users+1
                   <AlertTriangle className="w-4 h-4 text-red-400" />
                   <span className="text-sm font-semibold text-red-500">Danger Zone</span>
                 </div>
-               <button onClick={() => {
-    if (window.confirm(`Are you sure you want to delete ${selectedTenant.name}?`)) {deleteTenant(selectedTenant.id);}}}
-  className="w-full py-2 text-xs font-mono border border-red-200 text-red-500 rounded-xl hover:bg-red-50 transition-colors">
-  Delete Tenant
-</button>
+                <button onClick={() => {
+                  if (window.confirm(`Are you sure you want to delete ${selectedTenant.name}?`)) {
+                    deleteTenant(selectedTenant.id);
+                  }
+                }} className="w-full py-2 text-xs font-mono border border-red-200 text-red-500 rounded-xl hover:bg-red-50 transition-colors">
+                  Delete Tenant
+                </button>
               </div>
             </div>
           </div>

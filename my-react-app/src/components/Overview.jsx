@@ -41,32 +41,10 @@ const StatCard = ({ icon: Icon, label, value, delta, deltaUp, sub, accent = "#7c
   </div>
 );
 
-const Overview = () => {
+const Overview = () => { 
 
-  const [tenants, setTenants] = useState([]);
-  const [loading, setLoading] = useState(true);
-const activeCount = tenants.filter(
-  t => t.status === "active"
-).length;
-
-const suspendedCount = tenants.filter(
-  t => t.status === "suspended"
-).length;
-
-const trialCount = tenants.filter(
-  t => t.is_trial_active
-).length;
-
-const totalMRR = tenants.reduce(
-  (sum, t) => sum + Number(t.total_plan_amount || t.plan_price || 0),
-  0
-);
-
-const totalAiCredits = tenants.reduce(
-  (sum, t) => sum + Number(t.used_ai_credits || 0),
-  0
-);
-  
+  const [overview, setOverview] = useState(null);
+const [loading, setLoading] = useState(true);
 
   useEffect(() => {
   fetchOverview();
@@ -77,11 +55,11 @@ const fetchOverview = async () => {
     setLoading(true);
 
     const res = await axios.get(
-      `http://localhost:5001/api/tenants/all-tenants`
+      "http://localhost:5001/api/subscription/overview"
     );
 
     if (res.data.success) {
-      setTenants(res.data.data);
+      setOverview(res.data.data);
     }
   } catch (err) {
     console.error(err);
@@ -90,33 +68,7 @@ const fetchOverview = async () => {
   }
 };
 
-const revenueData = useMemo(() => {
-  const months = {};
 
-  tenants.forEach((tenant) => {
-    const month = new Date(tenant.created_at).toLocaleString("default", {
-      month: "short",
-    });
-
-    if (!months[month]) months[month] = 0;
-
-    months[month] += Number(
-      tenant.total_plan_amount || tenant.plan_price || 0
-    );
-  });
-
-  return Object.keys(months).map((m) => ({
-    month: m,
-    mrr: months[m],
-  }));
-}, [tenants]);
-
-const creditUsageData = useMemo(() => {
-  return tenants.slice(0, 7).map((tenant, index) => ({
-    day: `T${index + 1}`,
-    used: tenant.used_ai_credits || 0,
-  }));
-}, [tenants]);
 
 if (loading) {
   return (
@@ -132,15 +84,15 @@ if (loading) {
         <StatCard 
           icon={Building2} 
           label="Total Tenants" 
-          value={`${tenants.length}`} 
+          value={overview?.stats.total_tenants}
           // delta="+2 this month" 
           deltaUp 
-          sub={`${activeCount} active · ${trialCount} trial`} 
+          sub={`${overview?.stats.active_tenants} active · ${overview?.stats.trial_tenants} trial`}
         />
         <StatCard 
           icon={IndianRupee} 
           label="Monthly Revenue" 
-          value={`₹${totalMRR.toLocaleString()}`} 
+          value={`₹${Number(overview?.stats.mrr || 0).toLocaleString()}`}
           // delta="+11.5%" 
           deltaUp 
           sub="MRR across all plans" 
@@ -149,7 +101,9 @@ if (loading) {
         <StatCard 
           icon={Sparkles} 
           label="AI Credits Used" 
-          value={totalAiCredits.toLocaleString()}
+          value={Number(
+  overview?.stats.total_ai_credits_used || 0
+).toLocaleString()}
           // delta="+22%" 
           deltaUp 
           sub="7-day rolling average" 
@@ -158,8 +112,8 @@ if (loading) {
         <StatCard 
           icon={AlertTriangle} 
           label="Suspended" 
-          value={`${suspendedCount}`} 
-          sub={`${trialCount} trials expiring soon`} 
+          value={overview?.stats.suspended_tenants}
+          sub={`${overview?.stats.trial_tenants} trials`}
           accent="#dc2626" 
         />
       </div>
@@ -174,7 +128,7 @@ if (loading) {
             <span className="text-xs font-mono text-emerald-600 bg-emerald-50 border border-emerald-100 px-2 py-1 rounded-full">+70% YTD</span>
           </div>
           <ResponsiveContainer width="100%" height={180}>
-            <AreaChart data={revenueData}>
+            <AreaChart data={overview?.revenueChart || []}>
               <defs>
                 <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#7c5cfc" stopOpacity={0.15} />
@@ -184,7 +138,7 @@ if (loading) {
               <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 11, fontFamily: "JetBrains Mono" }} />
               <YAxis hide />
               <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 12, fontFamily: "JetBrains Mono", color: "#111827" }} formatter={(v) => [`$${v.toLocaleString()}`, "MRR"]} />
-              <Area type="monotone" dataKey="mrr" stroke="#7c5cfc" strokeWidth={2} fill="url(#rg)" />
+              <Area type="monotone" dataKey="revenue" stroke="#7c5cfc" strokeWidth={2} fill="url(#rg)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -195,7 +149,7 @@ if (loading) {
             <div className="text-xs font-mono text-gray-400 mt-0.5">Last 7 days</div>
           </div>
           <ResponsiveContainer width="100%" height={180}>
-            <BarChart data={creditUsageData} barSize={18}>
+            <BarChart data={overview?.creditUsage || []} barSize={18}>
               <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 11, fontFamily: "JetBrains Mono" }} />
               <YAxis hide />
               <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 12, fontFamily: "JetBrains Mono", color: "#111827" }} formatter={(v) => [v.toLocaleString(), "Credits"]} />
