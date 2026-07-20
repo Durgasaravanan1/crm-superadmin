@@ -12,6 +12,7 @@ import Settings from "./components/Settings";
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentView, setCurrentView] = useState("dashboard");
+  const [selectedTenant, setSelectedTenant] = useState(null);
 
   const handleLogin = () => {
     setIsAuthenticated(true);
@@ -25,10 +26,19 @@ function App() {
     <div className="flex h-screen bg-background overflow-hidden">
       <Sidebar currentView={currentView} setCurrentView={setCurrentView} />
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <Topbar currentView={currentView} />
+        <Topbar
+  currentView={currentView}
+  setCurrentView={setCurrentView}
+  setSelectedTenant={setSelectedTenant}
+/>
         <main className="flex-1 overflow-y-auto p-6 space-y-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden bg-background">
           {currentView === "dashboard" && <Overview />}
-          {currentView === "tenants" && <Tenants />}
+          {currentView === "tenants" && (
+  <Tenants
+    selectedTenant={selectedTenant}
+    setSelectedTenant={setSelectedTenant}
+  />
+)}
           {currentView === "billing" && <Billing />}
           {currentView === "plans" && <Plans />}
           {currentView === "announcements" && <Announcements />}

@@ -188,7 +188,8 @@ export const planFeatures = [
   { label: "Notion Integration", values: ["No", "No", "Yes"], isYesNo: true },
   { label: "Calling", values: ["Yes", "Yes", "Yes"], isYesNo: true },
   { label: "Call Recording", values: ["Yes", "Yes", "Yes"], isYesNo: true },
-  { label: "AI Call Transcription", values: ["Yes", "Yes", "Yes"], isYesNo: true },
+  // { label: "AI Call Transcription", values: ["Yes", "Yes", "Yes"], isYesNo: true },
+
 ];
 
 export const initialAnnouncements = [

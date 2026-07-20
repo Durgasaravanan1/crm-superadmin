@@ -1,12 +1,43 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+import axios from "axios";
 import { 
   Search, Bell, X, CheckCircle, AlertTriangle, Info, Clock, 
   Zap, Users, CreditCard, Megaphone, TrendingUp, Calendar 
 } from "lucide-react";
 
-const Topbar = ({ currentView }) => {
+const Topbar = ({
+  currentView,
+  setCurrentView,
+  setSelectedTenant,
+}) => {
   const [search, setSearch] = useState("");
+  const [tenants, setTenants] = useState([]);
+const [results, setResults] = useState([]);
+const backend_url = "http://localhost:5001";
   const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+  fetchTenants();
+}, []);
+
+const fetchTenants = async () => {
+  const res = await axios.get(`${backend_url}/api/tenants/all-tenants`);
+
+  setTenants(
+    (res.data.data || []).map((t) => ({
+      id: t.tenant_id,
+      tenant_id: t.tenant_id,
+      name: t.org_name,
+      domain: t.org_email,
+      plan: t.plan_name,
+      status: t.status,
+      subscriptionStatus: t.subscription_status,
+      users: t.current_user_count,
+      billing: t.billing_cycle,
+      startDate: t.created_at,
+    }))
+  );
+};
   
   const viewLabels = {
     dashboard: "Overview",
@@ -184,10 +215,53 @@ const Topbar = ({ currentView }) => {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+  const value = e.target.value;
+  setSearch(value);
+
+  if (!value.trim()) {
+    setResults([]);
+    return;
+  }
+
+  setResults(
+    tenants.filter((t) =>
+      t.name.toLowerCase().includes(value.toLowerCase()) ||
+      t.domain.toLowerCase().includes(value.toLowerCase()) ||
+      t.tenant_id.toLowerCase().includes(value.toLowerCase())
+    )
+  );
+}}
             placeholder="Search tenants…"
             className="bg-gray-50 border border-gray-200 rounded-xl pl-8 pr-3 py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-violet-400 w-52 font-mono"
           />
+
+          {results.length > 0 && (
+  <div className="absolute top-full left-0 mt-2 w-72 bg-white rounded-xl shadow-xl border z-50 overflow-hidden">
+
+    {results.map((tenant) => (
+      <button
+        key={tenant.id}
+        className="w-full text-left px-4 py-3 hover:bg-violet-50 border-b last:border-b-0"
+        onClick={() => {
+          setCurrentView("tenants");
+          setSelectedTenant(tenant);
+          setSearch("");
+          setResults([]);
+        }}
+      >
+        <div className="font-medium">
+          {tenant.name}
+        </div>
+
+        <div className="text-xs text-gray-500">
+          {tenant.domain}
+        </div>
+      </button>
+    ))}
+
+  </div>
+)}
         </div>
         
         {/* Notification Bell */}

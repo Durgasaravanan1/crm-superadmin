@@ -45,10 +45,26 @@ const Overview = () => {
 
   const [overview, setOverview] = useState(null);
 const [loading, setLoading] = useState(true);
+const [paymentOverview, setPaymentOverview] = useState(null);
 
   useEffect(() => {
   fetchOverview();
+  fetchPaymentOverview();
 }, []);
+
+const fetchPaymentOverview = async () => {
+  try {
+    const res = await axios.get(
+      "http://localhost:5001/api/subscriptionPayment/overview"
+    );
+
+    if (res.data.success) {
+      setPaymentOverview(res.data.data);
+    }
+  } catch (err) {
+    console.error(err);
+  }
+};
 
 const fetchOverview = async () => {
   try {
@@ -89,24 +105,25 @@ if (loading) {
           deltaUp 
           sub={`${overview?.stats.active_tenants} active · ${overview?.stats.trial_tenants} trial`}
         />
-        <StatCard 
-          icon={IndianRupee} 
-          label="Monthly Revenue" 
-          value={`₹${Number(overview?.stats.mrr || 0).toLocaleString()}`}
-          // delta="+11.5%" 
-          deltaUp 
-          sub="MRR across all plans" 
-          accent="#059669" 
-        />
+        <StatCard
+  icon={IndianRupee}
+  label="This Month Revenue"
+  value={`₹${Number(
+    paymentOverview?.this_month_revenue || 0
+  ).toLocaleString()}`}
+  deltaUp
+  sub="Revenue collected this month"
+  accent="#059669"
+/>
         <StatCard 
           icon={Sparkles} 
           label="AI Credits Used" 
           value={Number(
-  overview?.stats.total_ai_credits_used || 0
+  overview?.stats.this_month_ai_credits_used || 0
 ).toLocaleString()}
           // delta="+22%" 
           deltaUp 
-          sub="7-day rolling average" 
+          sub="Used this month" 
           accent="#0891b2" 
         />
         <StatCard 
@@ -137,7 +154,7 @@ if (loading) {
               </defs>
               <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 11, fontFamily: "JetBrains Mono" }} />
               <YAxis hide />
-              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 12, fontFamily: "JetBrains Mono", color: "#111827" }} formatter={(v) => [`$${v.toLocaleString()}`, "MRR"]} />
+              <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 12, fontFamily: "JetBrains Mono", color: "#111827" }} formatter={(v) => [`₹${v.toLocaleString()}`, "Monthly Revenue"]} />
               <Area type="monotone" dataKey="revenue" stroke="#7c5cfc" strokeWidth={2} fill="url(#rg)" />
             </AreaChart>
           </ResponsiveContainer>
@@ -145,12 +162,12 @@ if (loading) {
 
         <div className="lg:col-span-2 bg-white border border-gray-100 rounded-2xl p-5">
           <div className="mb-5">
-            <div className="text-sm font-semibold text-gray-900">AI Credit Usage</div>
-            <div className="text-xs font-mono text-gray-400 mt-0.5">Last 7 days</div>
+            <div className="text-sm font-semibold text-gray-900">Monthly AI Credit Usage</div>
+            <div className="text-xs font-mono text-gray-400 mt-0.5">Current Year</div>
           </div>
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={overview?.creditUsage || []} barSize={18}>
-              <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 11, fontFamily: "JetBrains Mono" }} />
+              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#9ca3af", fontSize: 11, fontFamily: "JetBrains Mono" }} />
               <YAxis hide />
               <Tooltip contentStyle={{ background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, fontSize: 12, fontFamily: "JetBrains Mono", color: "#111827" }} formatter={(v) => [v.toLocaleString(), "Credits"]} />
               <Bar dataKey="used" fill="#7c5cfc" radius={[4, 4, 0, 0]} />
@@ -159,7 +176,7 @@ if (loading) {
         </div>
       </div>
 
-      <div className="bg-white border border-gray-100 rounded-2xl p-5">
+      {/* <div className="bg-white border border-gray-100 rounded-2xl p-5">
         <div className="text-sm font-semibold text-gray-900 mb-4">Recent Activity</div>
         <div className="space-y-0">
           {[
@@ -175,7 +192,7 @@ if (loading) {
             </div>
           ))}
         </div>
-      </div>
+      </div> */}
     </>
   );
 };

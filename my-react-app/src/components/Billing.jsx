@@ -187,25 +187,81 @@ const fetchTenants = async () => {
     setPopup({ ...popup, isOpen: false });
   };
 
-  const downloadBillingCSV = () => {
-    try {
-      const rows = [
-        ["Tenant", "Plan", "MRR", "Status", "Next Invoice"],
-        ...tenants.filter(t => t.mrr > 0).map(t => [
-          t.org_name, t.plan_name, `$${t.mrr}`, t.invoice_status === "suspended" ? "Failed" : "Current", "Jul 1, 2025"
-        ])
-      ];
-      const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "wynsync-billing.csv"; a.click();
-      URL.revokeObjectURL(url);
-      showPopup("success", "Downloaded!", "CSV downloaded successfully!");
-    } catch (error) {
-      showPopup("error", "Download Failed", "Failed to download CSV. Please try again.");
-    }
-  };
+ const downloadBillingCSV = () => {
+
+ 
+  try {
+    const rows = [
+      [
+        "Tenant",
+        "Plan",
+        "Amount",
+        "Payment Status",
+        "Next Invoice",
+      ],
+      ...billingData
+        .filter((t) => !t.is_trial_active)
+        .map((t) => [
+          t.org_name,
+          t.plan_name,
+          `₹${Number(t.total_plan_amount || 0).toLocaleString("en-IN")}`,
+          t.invoice_status === "pending" ? "Unpaid" : "Paid",
+          t.next_invoice_date || "",
+        ]),
+    ];
+
+    
+
+    const csv = rows
+      .map((row) => row.map((cell) => `"${cell ?? ""}"`).join(","))
+      .join("\n");
+
+      // 👇 Paste these here
+    console.log("Rows:", rows);
+    console.log("CSV:", csv);
+
+   const blob = new Blob(
+  ["\uFEFF" + csv],
+  {
+    type: "text/csv;charset=utf-8;",
+  }
+);
+
+const url = URL.createObjectURL(blob);
+
+const link = document.createElement("a");
+link.href = url;
+link.setAttribute("download", "billing_overview.csv");
+
+document.body.appendChild(link);
+link.click();
+document.body.removeChild(link);
+
+setTimeout(() => {
+  URL.revokeObjectURL(url);
+}, 1000);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "billing_overview.csv";
+    a.click();
+
+    URL.revokeObjectURL(url);
+
+    showPopup(
+      "success",
+      "Downloaded!",
+      "Billing CSV downloaded successfully."
+    );
+  } catch (err) {
+    console.error(err);
+    showPopup(
+      "error",
+      "Download Failed",
+      "Unable to download billing CSV."
+    );
+  }
+};
 
   const downloadIndividualInvoice = (tenant) => {
     try {

@@ -5,6 +5,7 @@ import {
   Edit, FileText, CreditCard
 } from "lucide-react";
 import axios from "axios";
+import * as XLSX from "xlsx";
 
 const backend_url = "http://localhost:5001";
 
@@ -64,14 +65,37 @@ const CreditBar = ({ used, total }) => {
 
 const SubscriptionStatusBadge = ({ status }) => {
   const map = {
-    active: { label: "🟢 Active", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    trialing: { label: "🟡 Trialing", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-    trial_expired: { label: "🔴 Trial Expired", cls: "bg-red-50 text-red-600 border-red-200" },
-    payment_failed: { label: "💳 Payment Failed", cls: "bg-orange-50 text-orange-600 border-orange-200" },
+    active: {
+      label: "🟢 Active",
+      cls: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    },
+    suspended: {
+      label: "🔴 Suspended",
+      cls: "bg-red-50 text-red-600 border-red-200",
+    },
+    trialing: {
+      label: "🟡 Trialing",
+      cls: "bg-amber-50 text-amber-700 border-amber-200",
+    },
+    trial_expired: {
+      label: "🔴 Trial Expired",
+      cls: "bg-red-50 text-red-600 border-red-200",
+    },
+    payment_failed: {
+      label: "💳 Payment Failed",
+      cls: "bg-orange-50 text-orange-600 border-orange-200",
+    },
   };
-  const s = map[status] || map.active;
+
+  const s = map[status] || {
+    label: status,
+    cls: "bg-gray-50 text-gray-600 border-gray-200",
+  };
+
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border ${s.cls}`}>
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-mono font-medium border ${s.cls}`}
+    >
       {s.label}
     </span>
   );
@@ -205,13 +229,71 @@ const formatDate = (date) => {
   });
 };
 
-const Tenants = () => {
+const planDetails = {
+  Start: {
+    icon: Zap,
+    gradient: "from-cyan-500 to-blue-500",
+    color: "#06b6d4",
+    description: "Perfect for small teams",
+    monthlyPrice: 4999,
+    annualPrice: 38390,
+    users: 10,
+    features: [
+      "10 Users Included",
+      "6 Call Users Included",
+      "5,000 AI Credits",
+      "500 Call Minutes",
+      "Email Support"
+    ]
+  },
+
+  Grow: {
+    icon: TrendingUp,
+    gradient: "from-emerald-500 to-green-500",
+    color: "#10b981",
+    description: "Best for growing businesses",
+    monthlyPrice: 6999,
+    annualPrice: 67190,
+    users: 20,
+    features: [
+      "20 Users Included",
+      "16 Call Users Included",
+      "15,000 AI Credits",
+      "2,000 Call Minutes",
+      "Priority Support",
+      "Notion Integration"
+    ]
+  },
+
+  Scale: {
+    icon: Award,
+    gradient: "from-violet-500 to-purple-600",
+    color: "#8b5cf6",
+    description: "For large enterprises",
+    monthlyPrice: 12999,
+    annualPrice: 124790,
+    users: 40,
+    features: [
+      "40 Users Included",
+      "36 Call Users Included",
+      "50,000 AI Credits",
+      "5,000 Call Minutes",
+      "Dedicated Support",
+      "Advanced Integrations"
+    ]
+  }
+};
+
+const Tenants = ({
+  selectedTenant,
+  setSelectedTenant,
+}) => {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [filterPlan, setFilterPlan] = useState("all");
-  const [selectedTenant, setSelectedTenant] = useState(null);
+  // const [selectedTenant, setSelectedTenant] = useState(null);
   const [addCreditsOpen, setAddCreditsOpen] = useState(false);
   const [creditInput, setCreditInput] = useState("");
   const [addTenantOpen, setAddTenantOpen] = useState(false);
@@ -331,6 +413,7 @@ const [previewData, setPreviewData] = useState(null);
           aiCredits: t.ai_credits,
           usedCredits: t.used_ai_credits,
           startDate: t.created_at,
+          nextInvoiceDate: t.next_invoice_date,
           trialEnd: t.trial_end_date,
           billing: t.billing_cycle,
           email: t.org_email,
@@ -363,12 +446,80 @@ const [previewData, setPreviewData] = useState(null);
     }
   };
 
-  const filtered = tenants.filter(t => {
-    const q = search.toLowerCase();
-    return (t.name.toLowerCase().includes(q) || t.domain.toLowerCase().includes(q) || t.id.toLowerCase().includes(q))
-      && (filterStatus === "all" || t.status === filterStatus)
-      && (filterPlan === "all" || t.plan === filterPlan);
-  });
+  const filtered = tenants.filter((t) => {
+  const q = search.toLowerCase();
+
+  const matchesSearch =
+    t.name.toLowerCase().includes(q) ||
+    t.domain.toLowerCase().includes(q) ||
+    t.id.toLowerCase().includes(q);
+
+
+
+ const matchesStatus =
+  filterStatus === "all"
+    ? true
+    : filterStatus === "active"
+    ? t.subscriptionStatus === "subscribed"
+    : filterStatus === "trial"
+    ? t.subscriptionStatus === "trialing"
+    : filterStatus === "suspended"
+    ? t.status === "suspended" ||
+      ["trial_expired", "plan_expired"].includes(t.subscriptionStatus)
+    : true;
+
+  const matchesPlan =
+    filterPlan === "all" || t.plan === filterPlan;
+
+  return matchesSearch && matchesStatus && matchesPlan;
+});
+
+const exportTenants = () => {
+  const data = filtered.map((t) => ({
+    Tenant: t.name,
+    Email: t.domain,
+    Plan: t.plan,
+    Status: t.status,
+    "Subscription Status": t.subscriptionStatus,
+    Users: t.users,
+    "Expires In": getExpiryText(t),
+    Billing: t.billing,
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(data);
+  const workbook = XLSX.utils.book_new();
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Tenants");
+
+  XLSX.writeFile(
+    workbook,
+    `Tenants_${new Date().toISOString().split("T")[0]}.xlsx`
+  );
+};
+
+    const getExpiryText = (tenant) => {
+  const today = new Date();
+
+  const targetDate =
+    tenant.subscriptionStatus === "trialing"
+      ? tenant.trialEnd
+      : tenant.nextInvoiceDate;
+
+  if (!targetDate) return "-";
+
+  const target = new Date(targetDate);
+
+  const diffDays = Math.ceil(
+    (target - today) / (1000 * 60 * 60 * 24)
+  );
+
+  if (diffDays > 1) return `${diffDays} days left`;
+  if (diffDays === 1) return "1 day left";
+  if (diffDays === 0) return "Today";
+  if (diffDays === -1) return "Yesterday";
+
+  return `Expired ${Math.abs(diffDays)} days ago`;
+};
 
   const toggleStatus = async (tenant) => {
     try {
@@ -392,11 +543,45 @@ const [previewData, setPreviewData] = useState(null);
     }
   };
 
-  const addCredits = (id, amount) => {
-    setTenants(prev => prev.map(t => t.id === id ? { ...t, aiCredits: t.aiCredits + amount } : t));
-    setSelectedTenant(prev => prev && prev.id === id ? { ...prev, aiCredits: prev.aiCredits + amount } : prev);
-    showToast(`${amount.toLocaleString()} credits added successfully!`, "success");
-  };
+const addCredits = async () => {
+   console.log("Selected Tenant:", selectedTenant);
+  try {
+    const credits = parseInt(creditInput);
+
+    if (!credits || credits <= 0) {
+      showToast("Please enter a valid credit amount", "error");
+      return;
+    }
+
+    await axios.post(`${backend_url}/api/ai/add-credits`, {
+      tenant_id: selectedTenant.tenant_id,
+      credits,
+    });
+
+    showToast(`${credits.toLocaleString()} credits added successfully!`, "success");
+
+    setCreditInput("");
+    setAddCreditsOpen(false);
+
+    fetchTenants();
+
+    // Update selected tenant details immediately
+    setSelectedTenant((prev) =>
+      prev
+        ? {
+            ...prev,
+            aiCredits: Number(prev.aiCredits) + credits,
+          }
+        : prev
+    );
+  } catch (err) {
+    console.error(err);
+    showToast(
+      err.response?.data?.message || "Failed to add AI credits",
+      "error"
+    );
+  }
+};
 
   const handlePlanSelect = (plan) => {
     const slugMap = {
@@ -450,41 +635,7 @@ const [previewData, setPreviewData] = useState(null);
   const trialCount = tenants.filter(t => t.isTrialActive).length;
   const suspendedCount = tenants.filter(t => t.status === "suspended").length;
 
-  const planDetails = {
-    Start: { 
-      users: 10, 
-      defaultCalls: 0, 
-      maxCalls: 6,
-      color: "#0891b2",
-      gradient: "from-cyan-500 to-blue-500",
-      description: "Perfect for small teams getting started",
-      price: "₹4,999/mo",
-      icon: Zap,
-      features: ["10 Users", "Basic Support"]
-    },
-    Grow: { 
-      users: 20, 
-      defaultCalls: 0, 
-      maxCalls: 16,
-      color: "#059669",
-      gradient: "from-emerald-500 to-teal-500",
-      description: "Ideal for growing businesses",
-      price: "₹8,999/mo",
-      icon: TrendingUp,
-      features: ["20 Users", "Priority Support", "Advanced Analytics"]
-    },
-    Scale: { 
-      users: 40, 
-      defaultCalls: 0, 
-      maxCalls: 36,
-      color: "#7c5cfc",
-      gradient: "from-violet-500 to-purple-500",
-      description: "For large enterprises with high volume",
-      price: "₹16,999/mo",
-      icon: Award,
-      features: ["40 Users", "24/7 Dedicated Support", "Custom Integrations", "Enterprise Security"]
-    }
-  };
+  
 
   // Handles opening the dropdown for a given row — computes position from the
   // clicked button's bounding rect so it renders correctly regardless of table scroll/clip.
@@ -585,7 +736,7 @@ if (spaceBelow < estimatedHeight && spaceAbove > estimatedHeight) {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <button className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono bg-white border border-gray-200 text-gray-500 rounded-lg hover:text-gray-800 hover:border-gray-300 transition-colors">
+          <button onClick={exportTenants} className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono bg-white border border-gray-200 text-gray-500 rounded-lg hover:text-gray-800 hover:border-gray-300 transition-colors">
             <Download className="w-3.5 h-3.5" /> Export
           </button>
           <button onClick={() => setAddTenantOpen(true)} className="flex items-center gap-2 px-3 py-1.5 text-xs font-mono bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">
@@ -600,7 +751,7 @@ if (spaceBelow < estimatedHeight && spaceAbove > estimatedHeight) {
           <table className="w-full min-w-[850px]">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50/50">
-                {["Tenant", "Plan", "Status", "Subscription Status", "Users", "Start Date", "Billing", ""].map(h => (
+                {["Tenant", "Plan", "Status", "Subscription Status", "Users", "Expires In", "Billing", ""].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest text-gray-400 font-medium">{h}</th>
                 ))}
               </tr>
@@ -638,7 +789,19 @@ if (spaceBelow < estimatedHeight && spaceAbove > estimatedHeight) {
                     <SubscriptionStatusBadge status={t.subscriptionStatus} />
                   </td>
                   <td className="px-4 py-3.5 text-sm font-mono text-gray-700">{t.users}</td>
-                  <td className="px-4 py-3.5 text-xs font-mono text-gray-400">{formatDate(t.startDate)}</td>
+                  <td className="px-4 py-3.5">
+  <span
+    className={`text-xs font-medium ${
+      getExpiryText(t).includes("Expired")
+        ? "text-red-600"
+        : getExpiryText(t).includes("Today")
+        ? "text-amber-600"
+        : "text-gray-700"
+    }`}
+  >
+    {getExpiryText(t)}
+  </span>
+</td>
                   <td className="px-4 py-3.5 text-xs font-mono text-gray-700">{t.billing}</td>
                   <td className="px-4 py-3.5 relative" onClick={e => e.stopPropagation()}>
                     <button
@@ -1039,7 +1202,14 @@ Generate Invoice
                             </div>
                             <div className="flex items-center gap-4">
                               <div className="text-right">
-                                <div className="text-sm font-bold" style={{ color: details.color }}>{details.price}</div>
+                                <div
+  className="text-sm font-bold"
+  style={{ color: details.color }}
+>
+  {tenantForm.billing_cycle === "annual"
+    ? `₹${details.annualPrice.toLocaleString()}/yr`
+    : `₹${details.monthlyPrice.toLocaleString()}/mo`}
+</div>
                                 <div className="text-[10px] text-gray-400">{details.users} users</div>
                               </div>
                               {isSelected && (
@@ -1105,7 +1275,7 @@ Generate Invoice
               <div className="bg-violet-50 border border-violet-200 rounded-xl px-4 py-3 flex items-center gap-3">
                 <Clock className="w-4 h-4 text-violet-500 flex-shrink-0" />
                 <div className="text-xs text-violet-700">
-                  Trial starts today for <strong>14 days</strong>. Tenant will be set to <strong>Trial</strong> status with MRR = $0 until upgraded.
+                  Trial starts today for <strong>14 days</strong>. No subscription charges apply during the trial period.
                 </div>
               </div>
 
@@ -1126,8 +1296,13 @@ Generate Invoice
         </div>
       )}
 
+     
+
       {/* Tenant Detail Panel */}
       {selectedTenant && (
+
+        
+        
         <div className="fixed inset-0 z-50 flex" onClick={() => { setSelectedTenant(null); setAddCreditsOpen(false); setPendingPlan(null); }}>
           <div className="flex-1 bg-black/20 backdrop-blur-sm" />
           <div className="w-[90%] sm:w-[480px] bg-white border-l border-gray-200 overflow-y-auto shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -1139,7 +1314,7 @@ Generate Invoice
                 </div>
                 <div>
                   <div className="font-semibold text-gray-900">{selectedTenant.name}</div>
-                  <div className="text-xs font-mono text-gray-400">{selectedTenant.id} · {selectedTenant.domain}</div>
+                  <div className="text-xs font-mono text-gray-400">{selectedTenant.domain}</div>
                 </div>
               </div>
               <button onClick={() => { setSelectedTenant(null); setAddCreditsOpen(false); setPendingPlan(null); }}
@@ -1216,14 +1391,14 @@ Generate Invoice
                       <input type="number" value={creditInput} onChange={e => setCreditInput(e.target.value)}
                         placeholder="Custom amount"
                         className="flex-1 bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm font-mono text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-violet-400" />
-                      <button onClick={() => { const n = parseInt(creditInput); if (n > 0) { addCredits(selectedTenant.id, n); setCreditInput(""); setAddCreditsOpen(false); } }}
+                      <button  onClick={addCredits}
                         className="px-4 py-2 bg-violet-600 text-white text-sm font-mono rounded-lg hover:bg-violet-700 transition-colors">Add</button>
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+              {/* <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Package className="w-4 h-4 text-cyan-600" />
                   <span className="text-sm font-semibold text-gray-900">Change Plan</span>
@@ -1248,7 +1423,7 @@ Generate Invoice
                     <button onClick={submitPlanChange} className="px-3 py-1.5 text-xs font-mono bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors">Apply Change</button>
                   </div>
                 )}
-              </div>
+              </div> */}
 
               <div className="border border-red-100 rounded-xl p-4 space-y-3">
                 <div className="flex items-center gap-2">
